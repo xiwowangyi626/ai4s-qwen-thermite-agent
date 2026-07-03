@@ -215,7 +215,7 @@ function StatusItem({ icon, label, value, good }) {
 }
 
 function SummaryGrid({ summary, metrics }) {
-  const burnRate = summary.numeric_stats?.burn_rate_mm_s || {};
+  const burnRate = summary.numeric_stats?.burn_rate_m_s || {};
   const concentration = summary.numeric_stats?.cqd_concentration || {};
   const corr = summary.correlations_to_burn_rate?.cqd_concentration;
   return (
@@ -226,11 +226,11 @@ function SummaryGrid({ summary, metrics }) {
       </div>
       <div className="metric-grid">
         <Metric label="样品数" value={summary.rows} />
-        <Metric label="燃速均值 m/s" value={formatMS(burnRate.mean)} />
-        <Metric label="燃速范围 m/s" value={`${formatMS(burnRate.min)} - ${formatMS(burnRate.max)}`} />
+        <Metric label="燃速均值 m/s" value={formatRate(burnRate.mean)} />
+        <Metric label="燃速范围 m/s" value={`${formatRate(burnRate.min)} - ${formatRate(burnRate.max)}`} />
         <Metric label="浓度范围" value={`${concentration.min ?? "N/A"} - ${concentration.max ?? "N/A"}`} />
         <Metric label="浓度-燃速相关" value={corr ?? "N/A"} />
-        <Metric label="模型 MAE m/s" value={formatMS(metrics.mae)} />
+        <Metric label="模型 MAE m/s" value={formatRate(metrics.mae)} />
       </div>
       <SourceSummary groups={summary.grouped_by_source || []} />
     </section>
@@ -255,7 +255,7 @@ function SourceSummary({ groups }) {
             <tr key={group.cqd_source}>
               <td>{sourceLabel(group.cqd_source)}</td>
               <td>{group.sample_count}</td>
-              <td>{formatMS(group.mean_burn_rate_mm_s)}</td>
+              <td>{formatRate(group.mean_burn_rate_m_s)}</td>
               <td>{group.min_concentration} - {group.max_concentration}</td>
             </tr>
           ))}
@@ -301,7 +301,7 @@ function CandidateTable({ rows }) {
               <th>样品</th>
               <th>CQD 来源</th>
               <th>浓度</th>
-              <th>燃烧时间 s</th>
+              <th>传播时间 μs</th>
               <th>实测燃速 m/s</th>
               <th>预测燃速 m/s</th>
               <th>排序分</th>
@@ -314,10 +314,10 @@ function CandidateTable({ rows }) {
                 <td>{row.sample_id}</td>
                 <td>{sourceLabel(row.cqd_source)}</td>
                 <td>{row.cqd_concentration}</td>
-                <td>{formatSeconds(row.burn_time_s)}</td>
-                <td>{formatMS(row.observed_burn_rate_mm_s)}</td>
-                <td>{formatMS(row.predicted_burn_rate_mm_s)}</td>
-                <td>{formatMS(row.ranking_score)}</td>
+                <td>{formatMicroseconds(row.wave_time_us, row.burn_time_s)}</td>
+                <td>{formatRate(row.observed_burn_rate_m_s)}</td>
+                <td>{formatRate(row.predicted_burn_rate_m_s)}</td>
+                <td>{formatRate(row.ranking_score)}</td>
                 <td>{row.reason}</td>
               </tr>
             ))}
@@ -334,7 +334,7 @@ function formatSeconds(value) {
   if (Number.isNaN(number)) return value;
   return number.toFixed(7);
 }
-function formatMS(value) {
+function formatRate(value) {
   if (value === null || value === undefined || value === "N/A") return "N/A";
   const number = Number(value);
   if (Number.isNaN(number)) return value;
@@ -350,6 +350,8 @@ function sourceLabel(value) {
 }
 
 export default App;
+
+
 
 
 
