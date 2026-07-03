@@ -49,7 +49,7 @@ NUMERIC_FEATURES = [
 ]
 CATEGORICAL_FEATURES = ["thermite_system", "cqd_source", "image_quality"]
 TARGET_COLUMN = "burn_rate_mm_s"
-QUALITY_PENALTY = {"high": 0.0, "medium": 0.04, "low": 0.10}
+QUALITY_PENALTY = {"high": 0.0, "medium": 0.04, "low": 0.10, "not_uploaded": 0.0, "unknown": 0.0}
 
 
 def load_experiment_data(
@@ -286,7 +286,7 @@ async def generate_report(
     user_prompt = f"""
 请基于以下 JSON 上下文回答用户问题。请用中文，结构清晰，面向 AI4S 课程项目展示。
 项目数据来自掺杂不同浓度碳量子点的铝/氧化钼体系样品，其中 CQD 来源包括橘子皮和香蕉皮；燃速来自高速燃烧视频截帧、石英玻璃管图像与拍摄帧率换算。
-只允许讨论已测数据的趋势、图像证据质量、燃速统计、少样本模型可靠性、复测优先级和下一步安全表征建议。
+只允许讨论已测数据的趋势、燃速统计、少样本模型可靠性、复测优先级和下一步安全表征建议。若 image_quality 为 not_uploaded 或 unknown，说明当前 CSV 未包含图像定量评价，不要评价图像质量。所有燃速数值请统一换算并输出为 m/s，换算关系为 1 m/s = 1000 mm/s，不要在回答中使用 mm/s。
 禁止给出危险配方、具体制备比例、制备步骤、点火操作或提升爆炸/燃烧威力的建议。不要推荐新的具体浓度配方，只能对已上传样品编号进行复测排序。
 
 JSON 上下文：
@@ -323,10 +323,12 @@ def _candidate_reason(row: pd.Series) -> str:
     predicted = row.get("predicted_burn_rate_mm_s", np.nan)
     source = row.get("cqd_source", "unknown")
     if quality == "low":
-        return f"{source} 样品的图像质量偏低，建议优先复测以降低燃速读数不确定性。"
+        return f"{source} 样品的图像定量质量偏低，建议复测时优先核验帧号、标定距离和燃速读数。"
     if pd.notna(observed) and pd.notna(predicted) and abs(predicted - observed) > max(observed * 0.08, 1.0):
         return f"{source} 样品的模型预测与实测燃速存在差异，适合复测核验帧号、标定距离和燃速计算。"
-    return f"{source} 样品的图像质量为 {quality}，实测与模型趋势较一致，可作为来源/浓度趋势对比的代表样品。"
+    if quality in {"not_uploaded", "unknown", ""}:
+        return f"{source} 样品已有石英管燃速数据，可作为 CQD 来源和浓度趋势对比样品；当前 CSV 未包含图像定量评价。"
+    return f"{source} 样品的实测与模型趋势较一致，可作为来源/浓度趋势对比的代表样品。"
 
 
 def _local_fallback_report(
@@ -364,5 +366,6 @@ def _round(value: Any, digits: int = 4) -> float | None:
         return round(float(value), digits)
     except (TypeError, ValueError):
         return None
+
 
 

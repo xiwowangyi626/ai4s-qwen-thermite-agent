@@ -226,11 +226,11 @@ function SummaryGrid({ summary, metrics }) {
       </div>
       <div className="metric-grid">
         <Metric label="样品数" value={summary.rows} />
-        <Metric label="燃速均值 mm/s" value={burnRate.mean ?? "N/A"} />
-        <Metric label="燃速范围 mm/s" value={`${burnRate.min ?? "N/A"} - ${burnRate.max ?? "N/A"}`} />
+        <Metric label="燃速均值 m/s" value={formatMS(burnRate.mean)} />
+        <Metric label="燃速范围 m/s" value={`${formatMS(burnRate.min)} - ${formatMS(burnRate.max)}`} />
         <Metric label="浓度范围" value={`${concentration.min ?? "N/A"} - ${concentration.max ?? "N/A"}`} />
         <Metric label="浓度-燃速相关" value={corr ?? "N/A"} />
-        <Metric label="模型 MAE" value={metrics.mae ?? "N/A"} />
+        <Metric label="模型 MAE m/s" value={formatMS(metrics.mae)} />
       </div>
       <SourceSummary groups={summary.grouped_by_source || []} />
     </section>
@@ -246,7 +246,7 @@ function SourceSummary({ groups }) {
           <tr>
             <th>CQD 来源</th>
             <th>样品数</th>
-            <th>平均燃速 mm/s</th>
+            <th>平均燃速 m/s</th>
             <th>浓度范围</th>
           </tr>
         </thead>
@@ -255,7 +255,7 @@ function SourceSummary({ groups }) {
             <tr key={group.cqd_source}>
               <td>{sourceLabel(group.cqd_source)}</td>
               <td>{group.sample_count}</td>
-              <td>{group.mean_burn_rate_mm_s}</td>
+              <td>{formatMS(group.mean_burn_rate_mm_s)}</td>
               <td>{group.min_concentration} - {group.max_concentration}</td>
             </tr>
           ))}
@@ -301,12 +301,8 @@ function CandidateTable({ rows }) {
               <th>样品</th>
               <th>CQD 来源</th>
               <th>浓度</th>
-              <th>FPS</th>
-              <th>燃烧时间 s</th>
-              <th>距离 mm</th>
-              <th>图像质量</th>
-              <th>实测燃速</th>
-              <th>预测燃速</th>
+              <th>实测燃速 m/s</th>
+              <th>预测燃速 m/s</th>
               <th>排序分</th>
               <th>理由</th>
             </tr>
@@ -317,13 +313,9 @@ function CandidateTable({ rows }) {
                 <td>{row.sample_id}</td>
                 <td>{sourceLabel(row.cqd_source)}</td>
                 <td>{row.cqd_concentration}</td>
-                <td>{row.video_fps}</td>
-                <td>{row.burn_time_s}</td>
-                <td>{row.burn_distance_mm}</td>
-                <td>{qualityLabel(row.image_quality)}</td>
-                <td>{row.observed_burn_rate_mm_s}</td>
-                <td>{row.predicted_burn_rate_mm_s}</td>
-                <td>{row.ranking_score}</td>
+                <td>{formatMS(row.observed_burn_rate_mm_s)}</td>
+                <td>{formatMS(row.predicted_burn_rate_mm_s)}</td>
+                <td>{formatMS(row.ranking_score)}</td>
                 <td>{row.reason}</td>
               </tr>
             ))}
@@ -334,6 +326,12 @@ function CandidateTable({ rows }) {
   );
 }
 
+function formatMS(value) {
+  if (value === null || value === undefined || value === "N/A") return "N/A";
+  const number = Number(value);
+  if (Number.isNaN(number)) return value;
+  return (number / 1000).toFixed(1);
+}
 function sourceLabel(value) {
   const labels = {
     none: "未掺杂基准",
@@ -343,13 +341,7 @@ function sourceLabel(value) {
   return labels[value] || value;
 }
 
-function qualityLabel(value) {
-  const labels = {
-    high: "高",
-    medium: "中",
-    low: "低",
-  };
-  return labels[value] || value;
-}
-
 export default App;
+
+
+
