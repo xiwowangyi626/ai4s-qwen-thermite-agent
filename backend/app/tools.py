@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import hashlib
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -69,11 +70,23 @@ def load_experiment_data(
     if file_bytes:
         if filename and not filename.lower().endswith(".csv"):
             raise ValueError("Only CSV files are supported.")
+        source_bytes = file_bytes
+        source_filename = filename or "uploaded.csv"
+        source_kind = "uploaded_csv"
         df = _read_csv_bytes(file_bytes)
     else:
         path = demo_path or Path(__file__).resolve().parent / "data" / "demo_experiments.csv"
-        df = pd.read_csv(path, encoding="utf-8-sig")
+        source_bytes = path.read_bytes()
+        source_filename = path.name
+        source_kind = "demo_csv"
+        df = pd.read_csv(BytesIO(source_bytes), encoding="utf-8-sig")
 
+    dataset_info = {
+        "source": source_kind,
+        "filename": source_filename,
+        "sha256_12": hashlib.sha256(source_bytes).hexdigest()[:12],
+        "bytes": len(source_bytes),
+    }
     missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
     if missing:
         raise ValueError(f"CSV is missing required columns: {', '.join(missing)}")
@@ -114,6 +127,7 @@ def load_experiment_data(
     df["morphology_note"] = df["morphology_note"].fillna("").astype(str)
 
     _normalize_burn_rate_and_time(df)
+    df.attrs["dataset_info"] = dataset_info
 
     if df[TARGET_COLUMN].dropna().empty:
         raise ValueError(
@@ -183,6 +197,7 @@ def summarize_data(df: pd.DataFrame) -> dict[str, Any]:
 
     return {
         "rows": int(len(df)),
+        "dataset_info": df.attrs.get("dataset_info", {}),
         "columns": list(df.columns),
         "sample_ids": df["sample_id"].tolist(),
         "numeric_stats": numeric_stats,
@@ -353,18 +368,18 @@ def _normalize_burn_rate_and_time(df: pd.DataFrame) -> None:
 
     # Time priority:
     # 1) explicit wave_time_us from the quartz-tube measurement table;
-    # 2) distance / burn_rate_m_s;
-    # 3) frame delta / fps;
-    # 4) user-provided burn_time_s.
+    # 2) user-provided burn_time_s;
+    # 3) distance / burn_rate_m_s;
+    # 4) frame delta / fps.
     wave_time_s = df["wave_time_us"] / 1_000_000.0
+    provided_time_s = df["burn_time_s"]
     rate_time_s = df["wave_distance_m"] / df["burn_rate_m_s"]
     frame_time_s = (df["frame_end"] - df["frame_start"]) / df["video_fps"]
 
-    computed_time = wave_time_s.where(wave_time_s.notna() & (wave_time_s > 0), rate_time_s)
+    computed_time = wave_time_s.where(wave_time_s.notna() & (wave_time_s > 0), provided_time_s)
+    computed_time = computed_time.where(computed_time.notna() & (computed_time > 0), rate_time_s)
     computed_time = computed_time.where(computed_time.notna() & (computed_time > 0), frame_time_s)
-    computed_time = computed_time.where(computed_time.notna() & (computed_time > 0), df["burn_time_s"])
     df["burn_time_s"] = computed_time
-
     needs_wave_time = df["wave_time_us"].isna() | (df["wave_time_us"] <= 0)
     df.loc[needs_wave_time & df["burn_time_s"].notna(), "wave_time_us"] = (
         df.loc[needs_wave_time & df["burn_time_s"].notna(), "burn_time_s"] * 1_000_000.0
@@ -432,3 +447,5 @@ def _round(value: Any, digits: int = 4) -> float | None:
         return round(float(value), digits)
     except (TypeError, ValueError):
         return None
+
+

@@ -71,14 +71,20 @@ function App() {
         method: "POST",
         body: form,
       });
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { detail: await response.text() };
       if (!response.ok) {
-        throw new Error(data.detail || "分析请求失败");
+        throw new Error(data.detail || `分析请求失败：HTTP ${response.status}`);
       }
       setResult(data);
       setBackendStatus((current) => ({ ...current, checked: true, ok: true }));
     } catch (err) {
-      setError(err.message);
+      const message = err instanceof TypeError
+        ? "无法连接云端后端。请检查函数计算是否正在运行、CORS 是否允许当前 GitHub Pages 域名，或稍后重试。"
+        : err.message;
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -217,6 +223,7 @@ function StatusItem({ icon, label, value, good }) {
 function SummaryGrid({ summary, metrics }) {
   const burnRate = summary.numeric_stats?.burn_rate_m_s || {};
   const concentration = summary.numeric_stats?.cqd_concentration || {};
+  const dataset = summary.dataset_info || {};
   const corr = summary.correlations_to_burn_rate?.cqd_concentration;
   return (
     <section className="section-block">
@@ -224,6 +231,7 @@ function SummaryGrid({ summary, metrics }) {
         <BarChart3 size={18} />
         <h2>数据摘要</h2>
       </div>
+      <DatasetInfo dataset={dataset} sampleIds={summary.sample_ids || []} />
       <div className="metric-grid">
         <Metric label="样品数" value={summary.rows} />
         <Metric label="燃速均值 m/s" value={formatRate(burnRate.mean)} />
@@ -265,6 +273,30 @@ function SourceSummary({ groups }) {
   );
 }
 
+function DatasetInfo({ dataset, sampleIds }) {
+  const source = dataset.source === "uploaded_csv" ? "上传 CSV" : "内置 demo";
+  const shownIds = sampleIds.slice(0, 12).join(", ");
+  return (
+    <div className="dataset-info">
+      <div>
+        <span>当前数据集</span>
+        <strong>{dataset.filename || "N/A"}</strong>
+      </div>
+      <div>
+        <span>来源</span>
+        <strong>{source}</strong>
+      </div>
+      <div>
+        <span>数据指纹</span>
+        <strong>{dataset.sha256_12 || "N/A"}</strong>
+      </div>
+      <div className="sample-list">
+        <span>样品编号</span>
+        <strong>{shownIds || "N/A"}</strong>
+      </div>
+    </div>
+  );
+}
 function Metric({ label, value }) {
   return (
     <div className="metric">
@@ -362,11 +394,4 @@ function sourceLabel(value) {
 }
 
 export default App;
-
-
-
-
-
-
-
 
