@@ -332,7 +332,7 @@ function formatSeconds(value) {
   if (value === null || value === undefined || value === "N/A") return "N/A";
   const number = Number(value);
   if (Number.isNaN(number)) return value;
-  return number.toFixed(4);
+  return number.toFixed(7);
 }
 function formatMS(value) {
   if (value === null || value === undefined || value === "N/A") return "N/A";
