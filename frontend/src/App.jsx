@@ -128,7 +128,7 @@ function App() {
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               rows={7}
-              placeholder="输入关于 CQD 来源、浓度、视频燃速、图像质量或复测排序的问题"
+              placeholder="输入关于 CQD 来源、浓度、石英管燃速、燃烧时间或复测排序的问题"
             />
 
             <div className="quick-questions">
@@ -301,6 +301,7 @@ function CandidateTable({ rows }) {
               <th>样品</th>
               <th>CQD 来源</th>
               <th>浓度</th>
+              <th>燃烧时间 s</th>
               <th>实测燃速 m/s</th>
               <th>预测燃速 m/s</th>
               <th>排序分</th>
@@ -313,6 +314,7 @@ function CandidateTable({ rows }) {
                 <td>{row.sample_id}</td>
                 <td>{sourceLabel(row.cqd_source)}</td>
                 <td>{row.cqd_concentration}</td>
+                <td>{formatSeconds(row.burn_time_s)}</td>
                 <td>{formatMS(row.observed_burn_rate_mm_s)}</td>
                 <td>{formatMS(row.predicted_burn_rate_mm_s)}</td>
                 <td>{formatMS(row.ranking_score)}</td>
@@ -326,6 +328,12 @@ function CandidateTable({ rows }) {
   );
 }
 
+function formatSeconds(value) {
+  if (value === null || value === undefined || value === "N/A") return "N/A";
+  const number = Number(value);
+  if (Number.isNaN(number)) return value;
+  return number.toFixed(4);
+}
 function formatMS(value) {
   if (value === null || value === undefined || value === "N/A") return "N/A";
   const number = Number(value);
@@ -342,6 +350,8 @@ function sourceLabel(value) {
 }
 
 export default App;
+
+
 
 
 

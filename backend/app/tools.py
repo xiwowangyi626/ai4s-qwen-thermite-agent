@@ -27,7 +27,6 @@ REQUIRED_COLUMNS = [
     "frame_end",
     "burn_distance_mm",
     "burn_rate_mm_s",
-    "image_quality",
     "note",
 ]
 
@@ -47,9 +46,8 @@ NUMERIC_FEATURES = [
     "flame_length_mm",
     "flame_brightness_mean",
 ]
-CATEGORICAL_FEATURES = ["thermite_system", "cqd_source", "image_quality"]
+CATEGORICAL_FEATURES = ["thermite_system", "cqd_source"]
 TARGET_COLUMN = "burn_rate_mm_s"
-QUALITY_PENALTY = {"high": 0.0, "medium": 0.04, "low": 0.10, "not_uploaded": 0.0, "unknown": 0.0}
 
 
 def load_experiment_data(
@@ -61,10 +59,10 @@ def load_experiment_data(
     if file_bytes:
         if filename and not filename.lower().endswith(".csv"):
             raise ValueError("Only CSV files are supported.")
-        df = pd.read_csv(BytesIO(file_bytes))
+        df = _read_csv_bytes(file_bytes)
     else:
         path = demo_path or Path(__file__).resolve().parent / "data" / "demo_experiments.csv"
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, encoding="utf-8-sig")
 
     missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
     if missing:
@@ -90,7 +88,6 @@ def load_experiment_data(
     df["sample_id"] = df["sample_id"].astype(str).str.strip()
     df["thermite_system"] = df["thermite_system"].fillna("Al-MoO3").astype(str)
     df["cqd_source"] = df["cqd_source"].fillna("none").astype(str)
-    df["image_quality"] = df["image_quality"].fillna("unknown").astype(str).str.lower()
     df["note"] = df["note"].fillna("").astype(str)
 
     frame_delta = df["frame_end"] - df["frame_start"]
@@ -121,7 +118,6 @@ def summarize_data(df: pd.DataFrame) -> dict[str, Any]:
         }
 
     missing_values = df.isna().sum().to_dict()
-    quality_counts = df["image_quality"].fillna("unknown").value_counts().to_dict()
     source_counts = df["cqd_source"].fillna("unknown").value_counts().to_dict()
 
     correlations = {}
@@ -155,7 +151,7 @@ def summarize_data(df: pd.DataFrame) -> dict[str, Any]:
 
     top_samples = (
         df.sort_values(TARGET_COLUMN, ascending=False)
-        .head(3)[["sample_id", "cqd_source", "cqd_concentration", TARGET_COLUMN, "image_quality"]]
+        .head(3)[["sample_id", "cqd_source", "cqd_concentration", TARGET_COLUMN]]
         .to_dict(orient="records")
     )
 
@@ -164,14 +160,13 @@ def summarize_data(df: pd.DataFrame) -> dict[str, Any]:
         "columns": list(df.columns),
         "sample_ids": df["sample_id"].tolist(),
         "numeric_stats": numeric_stats,
-        "quality_counts": quality_counts,
         "source_counts": source_counts,
         "missing_values": missing_values,
         "correlations_to_burn_rate": correlations,
         "grouped_by_source": grouped,
         "per_source_trend": per_source_trend,
         "top_samples": top_samples,
-        "safety_note": "仅分析已测得的图像/燃速数据与复测优先级，不提供配方比例、制备步骤或威力提升建议。",
+        "safety_note": "仅分析已测燃速数据与复测优先级，不提供配方比例、制备步骤或威力提升建议。",
     }
 
 
@@ -239,9 +234,7 @@ def rank_candidates(
     candidate_df["predicted_burn_rate_mm_s"] = model.predict(
         candidate_df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
     )
-    scale = max(float(candidate_df[TARGET_COLUMN].std(ddof=0) or 1.0), 1.0)
-    candidate_df["quality_penalty"] = candidate_df["image_quality"].map(QUALITY_PENALTY).fillna(0.06) * scale
-    candidate_df["ranking_score"] = candidate_df["predicted_burn_rate_mm_s"] - candidate_df["quality_penalty"]
+    candidate_df["ranking_score"] = candidate_df["predicted_burn_rate_mm_s"]
 
     ranked = candidate_df.sort_values(
         ["ranking_score", "predicted_burn_rate_mm_s"], ascending=False
@@ -258,7 +251,6 @@ def rank_candidates(
                 "video_fps": _round(row["video_fps"]),
                 "burn_time_s": _round(row["burn_time_s"]),
                 "burn_distance_mm": _round(row["burn_distance_mm"]),
-                "image_quality": row["image_quality"],
                 "observed_burn_rate_mm_s": _round(row[TARGET_COLUMN]),
                 "predicted_burn_rate_mm_s": _round(row["predicted_burn_rate_mm_s"]),
                 "ranking_score": _round(row["ranking_score"]),
@@ -286,7 +278,8 @@ async def generate_report(
     user_prompt = f"""
 请基于以下 JSON 上下文回答用户问题。请用中文，结构清晰，面向 AI4S 课程项目展示。
 项目数据来自掺杂不同浓度碳量子点的铝/氧化钼体系样品，其中 CQD 来源包括橘子皮和香蕉皮；燃速来自高速燃烧视频截帧、石英玻璃管图像与拍摄帧率换算。
-只允许讨论已测数据的趋势、燃速统计、少样本模型可靠性、复测优先级和下一步安全表征建议。若 image_quality 为 not_uploaded 或 unknown，说明当前 CSV 未包含图像定量评价，不要评价图像质量。所有燃速数值请统一换算并输出为 m/s，换算关系为 1 m/s = 1000 mm/s，不要在回答中使用 mm/s。
+只允许讨论已测数据的趋势、燃速统计、少样本模型可靠性、复测优先级和下一步安全表征建议。当前 CSV 不包含图像质量字段，不要评价图像质量。
+所有燃速数值请统一换算并输出为 m/s，换算关系为 1 m/s = 1000 mm/s，不要在回答中使用 mm/s。
 禁止给出危险配方、具体制备比例、制备步骤、点火操作或提升爆炸/燃烧威力的建议。不要推荐新的具体浓度配方，只能对已上传样品编号进行复测排序。
 
 JSON 上下文：
@@ -318,17 +311,12 @@ JSON 上下文：
 
 
 def _candidate_reason(row: pd.Series) -> str:
-    quality = row.get("image_quality", "unknown")
     observed = row.get(TARGET_COLUMN, np.nan)
     predicted = row.get("predicted_burn_rate_mm_s", np.nan)
     source = row.get("cqd_source", "unknown")
-    if quality == "low":
-        return f"{source} 样品的图像定量质量偏低，建议复测时优先核验帧号、标定距离和燃速读数。"
     if pd.notna(observed) and pd.notna(predicted) and abs(predicted - observed) > max(observed * 0.08, 1.0):
-        return f"{source} 样品的模型预测与实测燃速存在差异，适合复测核验帧号、标定距离和燃速计算。"
-    if quality in {"not_uploaded", "unknown", ""}:
-        return f"{source} 样品已有石英管燃速数据，可作为 CQD 来源和浓度趋势对比样品；当前 CSV 未包含图像定量评价。"
-    return f"{source} 样品的实测与模型趋势较一致，可作为来源/浓度趋势对比的代表样品。"
+        return f"{source} 样品的模型预测与实测燃速存在差异，适合复测核验燃速计算和重复实验稳定性。"
+    return f"{source} 样品已有石英管燃速数据，可作为 CQD 来源和浓度趋势对比样品。"
 
 
 def _local_fallback_report(
@@ -340,21 +328,35 @@ def _local_fallback_report(
     top = candidates[0] if candidates else {}
     top_text = (
         f"当前复测优先级最高的样品是 {top.get('sample_id')}，CQD 来源为 {top.get('cqd_source')}，"
-        f"实测燃速为 {top.get('observed_burn_rate_mm_s')} mm/s，"
-        f"模型预测燃速为 {top.get('predicted_burn_rate_mm_s')} mm/s。"
+        f"实测燃速为 {_format_m_s(top.get('observed_burn_rate_mm_s'))} m/s，"
+        f"模型预测燃速为 {_format_m_s(top.get('predicted_burn_rate_mm_s'))} m/s。"
         if top
         else "当前没有可排序样品。"
     )
     return (
         f"问题：{question}\n\n"
-        f"数据集包含 {summary.get('rows')} 条记录，目标变量为 burn_rate_mm_s。"
+        f"数据集包含 {summary.get('rows')} 条记录，目标变量为燃速。"
         f"代理模型采用 {model_metrics.get('model')}，训练样本数为 "
         f"{model_metrics.get('training_rows')}，验证方式为 {model_metrics.get('validation')}。"
-        f"模型 MAE 为 {model_metrics.get('mae')}，R2 为 {model_metrics.get('r2')}。\n\n"
+        f"模型 MAE 为 {_format_m_s(model_metrics.get('mae'))} m/s，R2 为 {model_metrics.get('r2')}。\n\n"
         f"{top_text}\n\n"
-        "建议围绕图像质量、帧号截取一致性、像素-长度标定和重复样本补充来降低不确定性。"
+        "建议围绕重复样本、帧号截取一致性、距离标定和燃速计算记录来降低不确定性。"
         "所有建议仅用于科研数据分析和复测排序，不涉及配方比例、制备步骤或威力提升。"
     )
+
+
+def _read_csv_bytes(file_bytes: bytes) -> pd.DataFrame:
+    for encoding in ("utf-8-sig", "utf-8", "gbk"):
+        try:
+            return pd.read_csv(BytesIO(file_bytes), encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    return pd.read_csv(BytesIO(file_bytes), encoding="utf-8", encoding_errors="replace")
+
+
+def _format_m_s(value: Any) -> float | None:
+    rounded = _round(value)
+    return None if rounded is None else round(rounded / 1000, 4)
 
 
 def _round(value: Any, digits: int = 4) -> float | None:
@@ -366,6 +368,3 @@ def _round(value: Any, digits: int = 4) -> float | None:
         return round(float(value), digits)
     except (TypeError, ValueError):
         return None
-
-
-
