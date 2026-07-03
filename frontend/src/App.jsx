@@ -328,17 +328,29 @@ function CandidateTable({ rows }) {
   );
 }
 
-function formatSeconds(value) {
-  if (value === null || value === undefined || value === "N/A") return "N/A";
-  const number = Number(value);
-  if (Number.isNaN(number)) return value;
-  return number.toFixed(7);
+function formatMicroseconds(value, secondsFallback) {
+  const primary = Number(value);
+  if (value !== null && value !== undefined && !Number.isNaN(primary)) {
+    return primary.toFixed(1);
+  }
+
+  const seconds = Number(secondsFallback);
+  if (
+    secondsFallback !== null &&
+    secondsFallback !== undefined &&
+    !Number.isNaN(seconds)
+  ) {
+    return (seconds * 1000000).toFixed(1);
+  }
+
+  return "N/A";
 }
+
 function formatRate(value) {
   if (value === null || value === undefined || value === "N/A") return "N/A";
   const number = Number(value);
   if (Number.isNaN(number)) return value;
-  return (number / 1000).toFixed(1);
+  return number.toFixed(1);
 }
 function sourceLabel(value) {
   const labels = {
@@ -350,6 +362,7 @@ function sourceLabel(value) {
 }
 
 export default App;
+
 
 
 
